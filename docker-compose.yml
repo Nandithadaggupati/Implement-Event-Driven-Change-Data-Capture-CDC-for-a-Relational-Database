@@ -1,0 +1,58 @@
+version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  mysql:
+    image: 'mysql:8.0'
+    ports:
+      - '3306:3306'
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_password
+      - MYSQL_DATABASE=cdc_db
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+  cdc-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - CDC_DB_HOST=mysql
+      - CDC_DB_PORT=3306
+      - CDC_DB_USER=root
+      - CDC_DB_PASSWORD=root_password
+      - CDC_DB_NAME=cdc_db
+      - CDC_TABLE_NAME=products
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=cdc_events
+      - POLLING_INTERVAL=5
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - mysql
+      - kafka
+  kafka-consumer:
+    build:
+      context: ./kafka-consumer
+      dockerfile: Dockerfile
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=cdc_events
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - kafka
